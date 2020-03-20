@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -43,7 +43,6 @@ describe('SelectEventPlugin', () => {
       <input type="text" onMouseDown={function() {}} />,
       container,
     );
-    node.focus();
 
     // Trigger `mousedown` and `mouseup`. Note that
     // React is not currently listening to `mouseup`.

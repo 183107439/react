@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -41,7 +41,7 @@ describe('ReactDOMOption', () => {
     let node;
     expect(() => {
       node = ReactTestUtils.renderIntoDocument(el);
-    }).toWarnDev(
+    }).toErrorDev(
       'Only strings and numbers are supported as <option> children.\n' +
         '    in option (at **)',
     );
@@ -118,7 +118,7 @@ describe('ReactDOMOption', () => {
           <span />
         </option>,
       );
-    }).toWarnDev(
+    }).toErrorDev(
       'Only strings and numbers are supported as <option> children.',
     );
     expect(node.innerHTML).toBe('hello[object Object]');

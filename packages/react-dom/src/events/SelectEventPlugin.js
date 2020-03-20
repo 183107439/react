@@ -1,13 +1,12 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import {accumulateTwoPhaseDispatches} from 'events/EventPropagators';
 import {canUseDOM} from 'shared/ExecutionEnvironment';
-import SyntheticEvent from 'events/SyntheticEvent';
+import SyntheticEvent from 'legacy-events/SyntheticEvent';
 import isTextInputElement from 'shared/isTextInputElement';
 import shallowEqual from 'shared/shallowEqual';
 
@@ -22,11 +21,12 @@ import {
   TOP_MOUSE_UP,
   TOP_SELECTION_CHANGE,
 } from './DOMTopLevelEventTypes';
-import {isListeningToAllDependencies} from './ReactBrowserEventEmitter';
 import getActiveElement from '../client/getActiveElement';
 import {getNodeFromInstance} from '../client/ReactDOMComponentTree';
-import * as ReactInputSelection from '../client/ReactInputSelection';
+import {hasSelectionCapabilities} from '../client/ReactInputSelection';
 import {DOCUMENT_NODE} from '../shared/HTMLNodeType';
+import {isListeningToAllDependencies} from './DOMEventListenerMap';
+import accumulateTwoPhaseListeners from './accumulateTwoPhaseListeners';
 
 const skipSelectionChangeEvent =
   canUseDOM && 'documentMode' in document && document.documentMode <= 11;
@@ -66,10 +66,7 @@ let mouseDown = false;
  * @return {object}
  */
 function getSelection(node) {
-  if (
-    'selectionStart' in node &&
-    ReactInputSelection.hasSelectionCapabilities(node)
-  ) {
+  if ('selectionStart' in node && hasSelectionCapabilities(node)) {
     return {
       start: node.selectionStart,
       end: node.selectionEnd,
@@ -97,8 +94,8 @@ function getEventTargetDocument(eventTarget) {
   return eventTarget.window === eventTarget
     ? eventTarget.document
     : eventTarget.nodeType === DOCUMENT_NODE
-      ? eventTarget
-      : eventTarget.ownerDocument;
+    ? eventTarget
+    : eventTarget.ownerDocument;
 }
 
 /**
@@ -138,7 +135,7 @@ function constructSelectEvent(nativeEvent, nativeEventTarget) {
     syntheticEvent.type = 'select';
     syntheticEvent.target = activeElement;
 
-    accumulateTwoPhaseDispatches(syntheticEvent);
+    accumulateTwoPhaseListeners(syntheticEvent);
 
     return syntheticEvent;
   }
@@ -168,11 +165,17 @@ const SelectEventPlugin = {
     targetInst,
     nativeEvent,
     nativeEventTarget,
+    eventSystemFlags,
+    container,
   ) {
-    const doc = getEventTargetDocument(nativeEventTarget);
+    const containerOrDoc =
+      container || getEventTargetDocument(nativeEventTarget);
     // Track whether all listeners exists for this plugin. If none exist, we do
     // not extract events. See #3639.
-    if (!doc || !isListeningToAllDependencies('onSelect', doc)) {
+    if (
+      !containerOrDoc ||
+      !isListeningToAllDependencies('onSelect', containerOrDoc)
+    ) {
       return null;
     }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,12 +14,39 @@
  * environment.
  */
 
-import ReactFiberPersistentReconciler from 'react-reconciler/persistent';
+import ReactFiberReconciler from 'react-reconciler';
 import createReactNoop from './createReactNoop';
 
-const ReactNoopPersistent = createReactNoop(
-  ReactFiberPersistentReconciler, // reconciler
+export const {
+  _Scheduler,
+  getChildren,
+  getPendingChildren,
+  getOrCreateRootContainer,
+  createRoot,
+  createBlockingRoot,
+  getChildrenAsJSX,
+  getPendingChildrenAsJSX,
+  createPortal,
+  render,
+  renderLegacySyncRoot,
+  renderToRootWithID,
+  unmountRootWithID,
+  findInstance,
+  flushNextYield,
+  flushWithHostCounters,
+  expire,
+  flushExpired,
+  batchedUpdates,
+  deferredUpdates,
+  unbatchedUpdates,
+  discreteUpdates,
+  flushDiscreteUpdates,
+  flushSync,
+  flushPassiveEffects,
+  act,
+  dumpTree,
+  getRoot,
+} = createReactNoop(
+  ReactFiberReconciler, // reconciler
   false, // useMutation
 );
-
-export default ReactNoopPersistent;

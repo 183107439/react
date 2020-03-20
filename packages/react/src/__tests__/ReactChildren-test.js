@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -319,8 +319,8 @@ describe('ReactChildren', () => {
     });
 
     let instance;
-    expect(() => (instance = <div>{threeDivIterable}</div>)).toWarnDev(
-      'Warning: Each child in an array or iterator should have a unique "key" prop.',
+    expect(() => (instance = <div>{threeDivIterable}</div>)).toErrorDev(
+      'Warning: Each child in a list should have a unique "key" prop.',
     );
 
     function assertCalls() {
@@ -903,9 +903,9 @@ describe('ReactChildren', () => {
 
       expect(() =>
         ReactTestUtils.renderIntoDocument(<ComponentReturningArray />),
-      ).toWarnDev(
+      ).toErrorDev(
         'Warning: ' +
-          'Each child in an array or iterator should have a unique "key" prop.' +
+          'Each child in a list should have a unique "key" prop.' +
           ' See https://fb.me/react-warning-keys for more information.' +
           '\n    in ComponentReturningArray (at **)',
       );
@@ -924,9 +924,9 @@ describe('ReactChildren', () => {
     it('warns for keys for arrays at the top level', () => {
       expect(() =>
         ReactTestUtils.renderIntoDocument([<div />, <div />]),
-      ).toWarnDev(
+      ).toErrorDev(
         'Warning: ' +
-          'Each child in an array or iterator should have a unique "key" prop.' +
+          'Each child in a list should have a unique "key" prop.' +
           ' See https://fb.me/react-warning-keys for more information.',
         {withoutStack: true}, // There's nothing on the stack
       );

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -20,7 +20,8 @@ import {
   ContextProvider,
   ContextConsumer,
   Mode,
-} from 'shared/ReactTypeOfWork';
+  SuspenseComponent,
+} from 'shared/ReactWorkTags';
 
 type MeasurementPhase =
   | 'componentWillMount'
@@ -246,16 +247,15 @@ export function startRequestCallbackTimer(): void {
   }
 }
 
-export function stopRequestCallbackTimer(
-  didExpire: boolean,
-  expirationTime: number,
-): void {
+export function stopRequestCallbackTimer(didExpire: boolean): void {
   if (enableUserTimingAPI) {
     if (supportsUserTiming) {
       isWaitingForCallback = false;
-      const warning = didExpire ? 'React was blocked by main thread' : null;
+      const warning = didExpire
+        ? 'Update expired; will flush synchronously'
+        : null;
       endMark(
-        `(Waiting for async callback... will force flush in ${expirationTime} ms)`,
+        '(Waiting for async callback...)',
         '(Waiting for async callback...)',
         warning,
       );
@@ -315,7 +315,10 @@ export function stopFailedWorkTimer(fiber: Fiber): void {
       return;
     }
     fiber._debugIsCurrentlyTiming = false;
-    const warning = 'An error was thrown inside this error boundary';
+    const warning =
+      fiber.tag === SuspenseComponent
+        ? 'Rendering was suspended'
+        : 'An error was thrown inside this error boundary';
     endFiberMark(fiber, null, warning);
   }
 }

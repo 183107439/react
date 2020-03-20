@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,34 +7,32 @@
  * @flow
  */
 
+import type {Fiber} from './ReactFiber';
+
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import {
-  IndeterminateComponent,
-  FunctionalComponent,
-  FunctionalComponentLazy,
-  ClassComponent,
-  ClassComponentLazy,
-  HostComponent,
-  Mode,
-} from 'shared/ReactTypeOfWork';
+  HostRoot,
+  HostPortal,
+  HostText,
+  Fragment,
+  ContextProvider,
+  ContextConsumer,
+} from 'shared/ReactWorkTags';
 import describeComponentFrame from 'shared/describeComponentFrame';
 import getComponentName from 'shared/getComponentName';
 
 const ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
 
-import type {Fiber} from './ReactFiber';
-
-type LifeCyclePhase = 'render' | 'getChildContext';
-
 function describeFiber(fiber: Fiber): string {
   switch (fiber.tag) {
-    case IndeterminateComponent:
-    case FunctionalComponent:
-    case FunctionalComponentLazy:
-    case ClassComponent:
-    case ClassComponentLazy:
-    case HostComponent:
-    case Mode:
+    case HostRoot:
+    case HostPortal:
+    case HostText:
+    case Fragment:
+    case ContextProvider:
+    case ContextConsumer:
+      return '';
+    default:
       const owner = fiber._debugOwner;
       const source = fiber._debugSource;
       const name = getComponentName(fiber.type);
@@ -43,8 +41,6 @@ function describeFiber(fiber: Fiber): string {
         ownerName = getComponentName(owner.type);
       }
       return describeComponentFrame(name, source, ownerName);
-    default:
-      return '';
   }
 }
 
@@ -59,7 +55,7 @@ export function getStackByFiberInDevAndProd(workInProgress: Fiber): string {
 }
 
 export let current: Fiber | null = null;
-export let phase: LifeCyclePhase | null = null;
+export let isRendering: boolean = false;
 
 export function getCurrentFiberOwnerNameInDevOrNull(): string | null {
   if (__DEV__) {
@@ -90,7 +86,7 @@ export function resetCurrentFiber() {
   if (__DEV__) {
     ReactDebugCurrentFrame.getCurrentStack = null;
     current = null;
-    phase = null;
+    isRendering = false;
   }
 }
 
@@ -98,12 +94,12 @@ export function setCurrentFiber(fiber: Fiber) {
   if (__DEV__) {
     ReactDebugCurrentFrame.getCurrentStack = getCurrentFiberStackInDev;
     current = fiber;
-    phase = null;
+    isRendering = false;
   }
 }
 
-export function setCurrentPhase(lifeCyclePhase: LifeCyclePhase | null) {
+export function setIsRendering(rendering: boolean) {
   if (__DEV__) {
-    phase = lifeCyclePhase;
+    isRendering = rendering;
   }
 }

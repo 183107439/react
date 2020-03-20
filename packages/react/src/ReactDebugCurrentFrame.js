@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -23,6 +23,13 @@ export function setCurrentlyValidatingElement(element: null | ReactElement) {
 }
 
 if (__DEV__) {
+  ReactDebugCurrentFrame.setCurrentlyValidatingElement = function(
+    element: null | ReactElement,
+  ) {
+    if (__DEV__) {
+      currentlyValidatingElement = element;
+    }
+  };
   // Stack implementation injected by the current renderer.
   ReactDebugCurrentFrame.getCurrentStack = (null: null | (() => string));
 

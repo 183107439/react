@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -166,7 +166,16 @@ describe('factory components', () => {
       };
     }
 
-    const inst = ReactTestUtils.renderIntoDocument(<Comp />);
+    let inst;
+    expect(
+      () => (inst = ReactTestUtils.renderIntoDocument(<Comp />)),
+    ).toErrorDev(
+      'Warning: The <Comp /> component appears to be a function component that returns a class instance. ' +
+        'Change Comp to a class that extends React.Component instead. ' +
+        "If you can't use a class try assigning the prototype on the function as a workaround. " +
+        '`Comp.prototype = React.Component.prototype`. ' +
+        "Don't use an arrow function since it cannot be called with `new` by React.",
+    );
     expect(inst.refs.elemRef.tagName).toBe('DIV');
   });
 });
@@ -444,7 +453,7 @@ describe('creating element with ref in constructor', () => {
     }).toThrowError(
       'Element ref was specified as a string (p) but no owner was set. This could happen for one of' +
         ' the following reasons:\n' +
-        '1. You may be adding a ref to a functional component\n' +
+        '1. You may be adding a ref to a function component\n' +
         "2. You may be adding a ref to a component that was not created inside a component's render method\n" +
         '3. You have multiple copies of React loaded\n' +
         'See https://fb.me/react-refs-must-have-owner for more information.',

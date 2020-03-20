@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -9,31 +9,33 @@
 
 import type {ReactElement} from 'shared/ReactElementType';
 import type {ReactPortal} from 'shared/ReactTypes';
-import type {Fiber} from 'react-reconciler/src/ReactFiber';
-import type {ExpirationTime} from 'react-reconciler/src/ReactFiberExpirationTime';
+import type {BlockComponent} from 'react/src/block';
+import type {Fiber} from './ReactFiber';
+import type {ExpirationTime} from './ReactFiberExpirationTime';
 
 import getComponentName from 'shared/getComponentName';
-import {Placement, Deletion} from 'shared/ReactTypeOfSideEffect';
+import {Placement, Deletion} from 'shared/ReactSideEffectTags';
 import {
   getIteratorFn,
   REACT_ELEMENT_TYPE,
   REACT_FRAGMENT_TYPE,
   REACT_PORTAL_TYPE,
+  REACT_BLOCK_TYPE,
 } from 'shared/ReactSymbols';
 import {
-  FunctionalComponent,
+  FunctionComponent,
   ClassComponent,
-  ClassComponentLazy,
   HostText,
   HostPortal,
   Fragment,
-} from 'shared/ReactTypeOfWork';
+  Block,
+} from 'shared/ReactWorkTags';
 import invariant from 'shared/invariant';
-import warning from 'shared/warning';
-import warningWithoutStack from 'shared/warningWithoutStack';
+import {warnAboutStringRefs, enableBlocksAPI} from 'shared/ReactFeatureFlags';
 
 import {
   createWorkInProgress,
+  resetWorkInProgress,
   createFiberFromElement,
   createFiberFromFragment,
   createFiberFromText,
@@ -44,11 +46,13 @@ import {
   getCurrentFiberStackInDev,
   getStackByFiberInDevAndProd,
 } from './ReactCurrentFiber';
+import {isCompatibleFamilyForHotReloading} from './ReactFiberHotReloading';
 import {StrictMode} from './ReactTypeOfMode';
+import {initializeBlockComponentType} from 'shared/ReactLazyComponent';
 
 let didWarnAboutMaps;
 let didWarnAboutGenerators;
-let didWarnAboutStringRefInStrictMode;
+let didWarnAboutStringRefs;
 let ownerHasKeyUseWarning;
 let ownerHasFunctionTypeWarning;
 let warnForMissingKey = (child: mixed) => {};
@@ -56,7 +60,7 @@ let warnForMissingKey = (child: mixed) => {};
 if (__DEV__) {
   didWarnAboutMaps = false;
   didWarnAboutGenerators = false;
-  didWarnAboutStringRefInStrictMode = {};
+  didWarnAboutStringRefs = {};
 
   /**
    * Warn if there's no key explicitly set on dynamic arrays of children or
@@ -81,7 +85,7 @@ if (__DEV__) {
     child._store.validated = true;
 
     const currentComponentErrorInfo =
-      'Each child in an array or iterator should have a unique ' +
+      'Each child in a list should have a unique ' +
       '"key" prop. See https://fb.me/react-warning-keys for ' +
       'more information.' +
       getCurrentFiberStackInDev();
@@ -90,9 +94,8 @@ if (__DEV__) {
     }
     ownerHasKeyUseWarning[currentComponentErrorInfo] = true;
 
-    warning(
-      false,
-      'Each child in an array or iterator should have a unique ' +
+    console.error(
+      'Each child in a list should have a unique ' +
         '"key" prop. See https://fb.me/react-warning-keys for ' +
         'more information.',
     );
@@ -113,21 +116,44 @@ function coerceRef(
     typeof mixedRef !== 'object'
   ) {
     if (__DEV__) {
-      if (returnFiber.mode & StrictMode) {
+      // TODO: Clean this up once we turn on the string ref warning for
+      // everyone, because the strict mode case will no longer be relevant
+      if (
+        (returnFiber.mode & StrictMode || warnAboutStringRefs) &&
+        // We warn in ReactElement.js if owner and self are equal for string refs
+        // because these cannot be automatically converted to an arrow function
+        // using a codemod. Therefore, we don't have to warn about string refs again.
+        !(
+          element._owner &&
+          element._self &&
+          element._owner.stateNode !== element._self
+        )
+      ) {
         const componentName = getComponentName(returnFiber.type) || 'Component';
-        if (!didWarnAboutStringRefInStrictMode[componentName]) {
-          warningWithoutStack(
-            false,
-            'A string ref, "%s", has been found within a strict mode tree. ' +
-              'String refs are a source of potential bugs and should be avoided. ' +
-              'We recommend using createRef() instead.' +
-              '\n%s' +
-              '\n\nLearn more about using refs safely here:' +
-              '\nhttps://fb.me/react-strict-mode-string-ref',
-            mixedRef,
-            getStackByFiberInDevAndProd(returnFiber),
-          );
-          didWarnAboutStringRefInStrictMode[componentName] = true;
+        if (!didWarnAboutStringRefs[componentName]) {
+          if (warnAboutStringRefs) {
+            console.error(
+              'Component "%s" contains the string ref "%s". Support for string refs ' +
+                'will be removed in a future major release. We recommend using ' +
+                'useRef() or createRef() instead. ' +
+                'Learn more about using refs safely here: ' +
+                'https://fb.me/react-strict-mode-string-ref%s',
+              componentName,
+              mixedRef,
+              getStackByFiberInDevAndProd(returnFiber),
+            );
+          } else {
+            console.error(
+              'A string ref, "%s", has been found within a strict mode tree. ' +
+                'String refs are a source of potential bugs and should be avoided. ' +
+                'We recommend using useRef() or createRef() instead. ' +
+                'Learn more about using refs safely here: ' +
+                'https://fb.me/react-strict-mode-string-ref%s',
+              mixedRef,
+              getStackByFiberInDevAndProd(returnFiber),
+            );
+          }
+          didWarnAboutStringRefs[componentName] = true;
         }
       }
     }
@@ -138,9 +164,11 @@ function coerceRef(
       if (owner) {
         const ownerFiber = ((owner: any): Fiber);
         invariant(
-          ownerFiber.tag === ClassComponent ||
-            ownerFiber.tag === ClassComponentLazy,
-          'Stateless function components cannot have refs.',
+          ownerFiber.tag === ClassComponent,
+          'Function components cannot have string refs. ' +
+            'We recommend using useRef() instead. ' +
+            'Learn more about using refs safely here: ' +
+            'https://fb.me/react-strict-mode-string-ref',
         );
         inst = ownerFiber.stateNode;
       }
@@ -183,7 +211,7 @@ function coerceRef(
         element._owner,
         'Element ref was specified as a string (%s) but no owner was set. This could happen for one of' +
           ' the following reasons:\n' +
-          '1. You may be adding a ref to a functional component\n' +
+          '1. You may be adding a ref to a function component\n' +
           "2. You may be adding a ref to a component that was not created inside a component's render method\n" +
           '3. You have multiple copies of React loaded\n' +
           'See https://fb.me/react-refs-must-have-owner for more information.',
@@ -215,23 +243,24 @@ function throwOnInvalidObjectType(returnFiber: Fiber, newChild: Object) {
 }
 
 function warnOnFunctionType() {
-  const currentComponentErrorInfo =
-    'Functions are not valid as a React child. This may happen if ' +
-    'you return a Component instead of <Component /> from render. ' +
-    'Or maybe you meant to call this function rather than return it.' +
-    getCurrentFiberStackInDev();
-
-  if (ownerHasFunctionTypeWarning[currentComponentErrorInfo]) {
-    return;
-  }
-  ownerHasFunctionTypeWarning[currentComponentErrorInfo] = true;
-
-  warning(
-    false,
-    'Functions are not valid as a React child. This may happen if ' +
+  if (__DEV__) {
+    const currentComponentErrorInfo =
+      'Functions are not valid as a React child. This may happen if ' +
       'you return a Component instead of <Component /> from render. ' +
-      'Or maybe you meant to call this function rather than return it.',
-  );
+      'Or maybe you meant to call this function rather than return it.' +
+      getCurrentFiberStackInDev();
+
+    if (ownerHasFunctionTypeWarning[currentComponentErrorInfo]) {
+      return;
+    }
+    ownerHasFunctionTypeWarning[currentComponentErrorInfo] = true;
+
+    console.error(
+      'Functions are not valid as a React child. This may happen if ' +
+        'you return a Component instead of <Component /> from render. ' +
+        'Or maybe you meant to call this function rather than return it.',
+    );
+  }
 }
 
 // This wrapper function exists because I expect to clone the code in each path
@@ -300,14 +329,10 @@ function ChildReconciler(shouldTrackSideEffects) {
     return existingChildren;
   }
 
-  function useFiber(
-    fiber: Fiber,
-    pendingProps: mixed,
-    expirationTime: ExpirationTime,
-  ): Fiber {
+  function useFiber(fiber: Fiber, pendingProps: mixed): Fiber {
     // We currently set sibling to null and index to 0 here because it is easy
     // to forget to do before returning it. E.g. for the single child case.
-    const clone = createWorkInProgress(fiber, pendingProps, expirationTime);
+    const clone = createWorkInProgress(fiber, pendingProps);
     clone.index = 0;
     clone.sibling = null;
     return clone;
@@ -367,7 +392,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      const existing = useFiber(current, textContent, expirationTime);
+      const existing = useFiber(current, textContent);
       existing.return = returnFiber;
       return existing;
     }
@@ -379,27 +404,54 @@ function ChildReconciler(shouldTrackSideEffects) {
     element: ReactElement,
     expirationTime: ExpirationTime,
   ): Fiber {
-    if (current !== null && current.type === element.type) {
-      // Move based on index
-      const existing = useFiber(current, element.props, expirationTime);
-      existing.ref = coerceRef(returnFiber, current, element);
-      existing.return = returnFiber;
-      if (__DEV__) {
-        existing._debugSource = element._source;
-        existing._debugOwner = element._owner;
+    if (current !== null) {
+      if (
+        current.elementType === element.type ||
+        // Keep this check inline so it only runs on the false path:
+        (__DEV__ ? isCompatibleFamilyForHotReloading(current, element) : false)
+      ) {
+        // Move based on index
+        const existing = useFiber(current, element.props);
+        existing.ref = coerceRef(returnFiber, current, element);
+        existing.return = returnFiber;
+        if (__DEV__) {
+          existing._debugSource = element._source;
+          existing._debugOwner = element._owner;
+        }
+        return existing;
+      } else if (
+        enableBlocksAPI &&
+        current.tag === Block &&
+        element.type.$$typeof === REACT_BLOCK_TYPE
+      ) {
+        // The new Block might not be initialized yet. We need to initialize
+        // it in case initializing it turns out it would match.
+        initializeBlockComponentType(element.type);
+        if (
+          (element.type: BlockComponent<any, any, any>)._fn ===
+          (current.type: BlockComponent<any, any, any>)._fn
+        ) {
+          // Same as above but also update the .type field.
+          const existing = useFiber(current, element.props);
+          existing.return = returnFiber;
+          existing.type = element.type;
+          if (__DEV__) {
+            existing._debugSource = element._source;
+            existing._debugOwner = element._owner;
+          }
+          return existing;
+        }
       }
-      return existing;
-    } else {
-      // Insert
-      const created = createFiberFromElement(
-        element,
-        returnFiber.mode,
-        expirationTime,
-      );
-      created.ref = coerceRef(returnFiber, current, element);
-      created.return = returnFiber;
-      return created;
     }
+    // Insert
+    const created = createFiberFromElement(
+      element,
+      returnFiber.mode,
+      expirationTime,
+    );
+    created.ref = coerceRef(returnFiber, current, element);
+    created.return = returnFiber;
+    return created;
   }
 
   function updatePortal(
@@ -424,7 +476,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      const existing = useFiber(current, portal.children || [], expirationTime);
+      const existing = useFiber(current, portal.children || []);
       existing.return = returnFiber;
       return existing;
     }
@@ -449,7 +501,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       return created;
     } else {
       // Update
-      const existing = useFiber(current, fragment, expirationTime);
+      const existing = useFiber(current, fragment);
       existing.return = returnFiber;
       return existing;
     }
@@ -714,8 +766,7 @@ function ChildReconciler(shouldTrackSideEffects) {
             knownKeys.add(key);
             break;
           }
-          warning(
-            false,
+          console.error(
             'Encountered two children with the same key, `%s`. ' +
               'Keys should be unique so that components maintain their identity ' +
               'across updates. Non-unique keys may cause children to be ' +
@@ -737,7 +788,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     newChildren: Array<*>,
     expirationTime: ExpirationTime,
   ): Fiber | null {
-    // This algorithm can't optimize by searching from boths ends since we
+    // This algorithm can't optimize by searching from both ends since we
     // don't have backpointers on fibers. I'm trying to see how far we can get
     // with that model. If it ends up not being worth the tradeoffs, we can
     // add it later.
@@ -832,7 +883,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           newChildren[newIdx],
           expirationTime,
         );
-        if (!newFiber) {
+        if (newFiber === null) {
           continue;
         }
         lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
@@ -859,7 +910,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         newChildren[newIdx],
         expirationTime,
       );
-      if (newFiber) {
+      if (newFiber !== null) {
         if (shouldTrackSideEffects) {
           if (newFiber.alternate !== null) {
             // The new fiber is a work in progress, but if there exists a
@@ -914,25 +965,27 @@ function ChildReconciler(shouldTrackSideEffects) {
         // $FlowFixMe Flow doesn't know about toStringTag
         newChildrenIterable[Symbol.toStringTag] === 'Generator'
       ) {
-        warning(
-          didWarnAboutGenerators,
-          'Using Generators as children is unsupported and will likely yield ' +
-            'unexpected results because enumerating a generator mutates it. ' +
-            'You may convert it to an array with `Array.from()` or the ' +
-            '`[...spread]` operator before rendering. Keep in mind ' +
-            'you might need to polyfill these features for older browsers.',
-        );
+        if (!didWarnAboutGenerators) {
+          console.error(
+            'Using Generators as children is unsupported and will likely yield ' +
+              'unexpected results because enumerating a generator mutates it. ' +
+              'You may convert it to an array with `Array.from()` or the ' +
+              '`[...spread]` operator before rendering. Keep in mind ' +
+              'you might need to polyfill these features for older browsers.',
+          );
+        }
         didWarnAboutGenerators = true;
       }
 
       // Warn about using Maps as children
       if ((newChildrenIterable: any).entries === iteratorFn) {
-        warning(
-          didWarnAboutMaps,
-          'Using Maps as children is unsupported and will likely yield ' +
-            'unexpected results. Convert it to a sequence/iterable of keyed ' +
-            'ReactElements instead.',
-        );
+        if (!didWarnAboutMaps) {
+          console.error(
+            'Using Maps as children is unsupported and will likely yield ' +
+              'unexpected results. Convert it to a sequence/iterable of keyed ' +
+              'ReactElements instead.',
+          );
+        }
         didWarnAboutMaps = true;
       }
 
@@ -983,7 +1036,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         // unfortunate because it triggers the slow path all the time. We need
         // a better way to communicate whether this was a miss or null,
         // boolean, undefined, etc.
-        if (!oldFiber) {
+        if (oldFiber === null) {
           oldFiber = nextOldFiber;
         }
         break;
@@ -1091,7 +1144,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       // We already have an existing node so let's just update it and delete
       // the rest.
       deleteRemainingChildren(returnFiber, currentFirstChild.sibling);
-      const existing = useFiber(currentFirstChild, textContent, expirationTime);
+      const existing = useFiber(currentFirstChild, textContent);
       existing.return = returnFiber;
       return existing;
     }
@@ -1119,30 +1172,68 @@ function ChildReconciler(shouldTrackSideEffects) {
       // TODO: If key === null and child.key === null, then this only applies to
       // the first item in the list.
       if (child.key === key) {
-        if (
-          child.tag === Fragment
-            ? element.type === REACT_FRAGMENT_TYPE
-            : child.type === element.type
-        ) {
-          deleteRemainingChildren(returnFiber, child.sibling);
-          const existing = useFiber(
-            child,
-            element.type === REACT_FRAGMENT_TYPE
-              ? element.props.children
-              : element.props,
-            expirationTime,
-          );
-          existing.ref = coerceRef(returnFiber, child, element);
-          existing.return = returnFiber;
-          if (__DEV__) {
-            existing._debugSource = element._source;
-            existing._debugOwner = element._owner;
+        switch (child.tag) {
+          case Fragment: {
+            if (element.type === REACT_FRAGMENT_TYPE) {
+              deleteRemainingChildren(returnFiber, child.sibling);
+              const existing = useFiber(child, element.props.children);
+              existing.return = returnFiber;
+              if (__DEV__) {
+                existing._debugSource = element._source;
+                existing._debugOwner = element._owner;
+              }
+              return existing;
+            }
+            break;
           }
-          return existing;
-        } else {
-          deleteRemainingChildren(returnFiber, child);
-          break;
+          case Block:
+            if (enableBlocksAPI) {
+              if (element.type.$$typeof === REACT_BLOCK_TYPE) {
+                // The new Block might not be initialized yet. We need to initialize
+                // it in case initializing it turns out it would match.
+                initializeBlockComponentType(element.type);
+                if (
+                  (element.type: BlockComponent<any, any, any>)._fn ===
+                  (child.type: BlockComponent<any, any, any>)._fn
+                ) {
+                  deleteRemainingChildren(returnFiber, child.sibling);
+                  const existing = useFiber(child, element.props);
+                  existing.type = element.type;
+                  existing.return = returnFiber;
+                  if (__DEV__) {
+                    existing._debugSource = element._source;
+                    existing._debugOwner = element._owner;
+                  }
+                  return existing;
+                }
+              }
+            }
+          // We intentionally fallthrough here if enableBlocksAPI is not on.
+          // eslint-disable-next-lined no-fallthrough
+          default: {
+            if (
+              child.elementType === element.type ||
+              // Keep this check inline so it only runs on the false path:
+              (__DEV__
+                ? isCompatibleFamilyForHotReloading(child, element)
+                : false)
+            ) {
+              deleteRemainingChildren(returnFiber, child.sibling);
+              const existing = useFiber(child, element.props);
+              existing.ref = coerceRef(returnFiber, child, element);
+              existing.return = returnFiber;
+              if (__DEV__) {
+                existing._debugSource = element._source;
+                existing._debugOwner = element._owner;
+              }
+              return existing;
+            }
+            break;
+          }
         }
+        // Didn't match.
+        deleteRemainingChildren(returnFiber, child);
+        break;
       } else {
         deleteChild(returnFiber, child);
       }
@@ -1188,11 +1279,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           child.stateNode.implementation === portal.implementation
         ) {
           deleteRemainingChildren(returnFiber, child.sibling);
-          const existing = useFiber(
-            child,
-            portal.children || [],
-            expirationTime,
-          );
+          const existing = useFiber(child, portal.children || []);
           existing.return = returnFiber;
           return existing;
         } else {
@@ -1309,8 +1396,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       // component, throw an error. If Fiber return types are disabled,
       // we already threw above.
       switch (returnFiber.tag) {
-        case ClassComponent:
-        case ClassComponentLazy: {
+        case ClassComponent: {
           if (__DEV__) {
             const instance = returnFiber.stateNode;
             if (instance.render._isMockFunction) {
@@ -1322,7 +1408,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         // Intentionally fall through to the next case, which handles both
         // functions and classes
         // eslint-disable-next-lined no-fallthrough
-        case FunctionalComponent: {
+        case FunctionComponent: {
           const Component = returnFiber.type;
           invariant(
             false,
@@ -1359,11 +1445,7 @@ export function cloneChildFibers(
   }
 
   let currentChild = workInProgress.child;
-  let newChild = createWorkInProgress(
-    currentChild,
-    currentChild.pendingProps,
-    currentChild.expirationTime,
-  );
+  let newChild = createWorkInProgress(currentChild, currentChild.pendingProps);
   workInProgress.child = newChild;
 
   newChild.return = workInProgress;
@@ -1372,9 +1454,20 @@ export function cloneChildFibers(
     newChild = newChild.sibling = createWorkInProgress(
       currentChild,
       currentChild.pendingProps,
-      currentChild.expirationTime,
     );
     newChild.return = workInProgress;
   }
   newChild.sibling = null;
+}
+
+// Reset a workInProgress child set to prepare it for a second pass.
+export function resetChildFibers(
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+): void {
+  let child = workInProgress.child;
+  while (child !== null) {
+    resetWorkInProgress(child, renderExpirationTime);
+    child = child.sibling;
+  }
 }

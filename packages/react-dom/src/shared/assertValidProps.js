@@ -1,12 +1,11 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
 import invariant from 'shared/invariant';
-import warning from 'shared/warning';
 // TODO: We can remove this if we add invariantWithStack()
 // or add stack by default to invariants where possible.
 import ReactSharedInternals from 'shared/ReactSharedInternals';
@@ -48,15 +47,18 @@ function assertValidProps(tag: string, props: ?Object) {
     );
   }
   if (__DEV__) {
-    warning(
-      props.suppressContentEditableWarning ||
-        !props.contentEditable ||
-        props.children == null,
-      'A component is `contentEditable` and contains `children` managed by ' +
-        'React. It is now your responsibility to guarantee that none of ' +
-        'those nodes are unexpectedly modified or duplicated. This is ' +
-        'probably not intentional.',
-    );
+    if (
+      !props.suppressContentEditableWarning &&
+      props.contentEditable &&
+      props.children != null
+    ) {
+      console.error(
+        'A component is `contentEditable` and contains `children` managed by ' +
+          'React. It is now your responsibility to guarantee that none of ' +
+          'those nodes are unexpectedly modified or duplicated. This is ' +
+          'probably not intentional.',
+      );
+    }
   }
   invariant(
     props.style == null || typeof props.style === 'object',

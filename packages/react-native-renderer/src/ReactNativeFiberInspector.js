@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -12,12 +12,12 @@ import type {Fiber} from 'react-reconciler/src/ReactFiber';
 import {
   findCurrentHostFiber,
   findCurrentFiberUsingSlowPath,
-} from 'react-reconciler/reflection';
+} from 'react-reconciler/src/ReactFiberTreeReflection';
 import getComponentName from 'shared/getComponentName';
-import {HostComponent} from 'shared/ReactTypeOfWork';
+import {HostComponent} from 'shared/ReactWorkTags';
 import invariant from 'shared/invariant';
 // Module provided by RN:
-import UIManager from 'UIManager';
+import {UIManager} from 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface';
 
 import {getClosestInstanceFromNode} from './ReactNativeComponentTree';
 

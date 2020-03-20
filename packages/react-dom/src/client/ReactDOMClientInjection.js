@@ -1,12 +1,11 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
-import * as EventPluginHub from 'events/EventPluginHub';
-import * as EventPluginUtils from 'events/EventPluginUtils';
+import {setComponentTree} from 'legacy-events/EventPluginUtils';
 
 import {
   getFiberCurrentPropsFromNode,
@@ -15,16 +14,36 @@ import {
 } from './ReactDOMComponentTree';
 import BeforeInputEventPlugin from '../events/BeforeInputEventPlugin';
 import ChangeEventPlugin from '../events/ChangeEventPlugin';
-import DOMEventPluginOrder from '../events/DOMEventPluginOrder';
 import EnterLeaveEventPlugin from '../events/EnterLeaveEventPlugin';
 import SelectEventPlugin from '../events/SelectEventPlugin';
 import SimpleEventPlugin from '../events/SimpleEventPlugin';
+import {
+  injectEventPluginOrder,
+  injectEventPluginsByName,
+} from 'legacy-events/EventPluginRegistry';
+
+/**
+ * Specifies a deterministic ordering of `EventPlugin`s. A convenient way to
+ * reason about plugins, without having to package every one of them. This
+ * is better than having plugins be ordered in the same order that they
+ * are injected because that ordering would be influenced by the packaging order.
+ * `ResponderEventPlugin` must occur before `SimpleEventPlugin` so that
+ * preventing default on events is convenient in `SimpleEventPlugin` handlers.
+ */
+const DOMEventPluginOrder = [
+  'ResponderEventPlugin',
+  'SimpleEventPlugin',
+  'EnterLeaveEventPlugin',
+  'ChangeEventPlugin',
+  'SelectEventPlugin',
+  'BeforeInputEventPlugin',
+];
 
 /**
  * Inject modules for resolving DOM hierarchy and plugin ordering.
  */
-EventPluginHub.injection.injectEventPluginOrder(DOMEventPluginOrder);
-EventPluginUtils.setComponentTree(
+injectEventPluginOrder(DOMEventPluginOrder);
+setComponentTree(
   getFiberCurrentPropsFromNode,
   getInstanceFromNode,
   getNodeFromInstance,
@@ -34,7 +53,7 @@ EventPluginUtils.setComponentTree(
  * Some important event plugins included by default (without having to require
  * them).
  */
-EventPluginHub.injection.injectEventPluginsByName({
+injectEventPluginsByName({
   SimpleEventPlugin: SimpleEventPlugin,
   EnterLeaveEventPlugin: EnterLeaveEventPlugin,
   ChangeEventPlugin: ChangeEventPlugin,
